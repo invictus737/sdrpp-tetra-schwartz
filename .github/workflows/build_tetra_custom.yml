@@ -22,6 +22,7 @@ env:
 jobs:
 
     build_appimage:
+        if: ${{ !contains(github.ref_name, 'macos') }}
         runs-on: ubuntu-24.04
 
         steps:
