@@ -1,4 +1,4 @@
-name: Build SDR++ TETRA-SCHWARTZ (AppImage + Windows)
+name: Build SDR++ TETRA-SCHWARTZ (AppImage + Windows + macOS)
 
 on:
     push:
@@ -432,12 +432,103 @@ jobs:
               name: SDRPP-TETRA-SCHWARTZ_v${{ env.TETRA_VERSION }}-beta_windows_x64
               path: ${{runner.workspace}}/sdrpp_windows_x64.zip
 
+    build_macos_arm64:
+        # light build: only RTL-SDR (+ RTL-TCP) and MSi2500 (SoapySDR + SoapyMiri), TETRA, recorder
+        runs-on: macos-14
+
+        env:
+            HOMEBREW_NO_AUTO_UPDATE: 1
+            HOMEBREW_NO_INSTALL_CLEANUP: 1
+
+        steps:
+        - uses: actions/checkout@v4
+
+        - name: Install dependencies
+          run: brew install cmake ninja pkgconf fftw glfw volk zstd libusb librtlsdr rtaudio soapysdr
+
+        - name: Build MSi2500 driver (libmirisdr-5 + SoapyMiri)
+          run: |
+            MIRI="$PWD/miri-prefix"
+            git clone --depth 1 https://github.com/ericek111/libmirisdr-5
+            cmake -S libmirisdr-5 -B libmirisdr-5/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$MIRI" -DCMAKE_INSTALL_NAME_DIR="$MIRI/lib" -DCMAKE_PREFIX_PATH=/opt/homebrew
+            cmake --build libmirisdr-5/build && cmake --install libmirisdr-5/build
+            git clone --depth 1 https://github.com/ericek111/SoapyMiri
+            PKG_CONFIG_PATH="$MIRI/lib/pkgconfig" cmake -S SoapyMiri -B SoapyMiri/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$MIRI" -DCMAKE_PREFIX_PATH="$MIRI;/opt/homebrew" -DCMAKE_INSTALL_RPATH="$MIRI/lib"
+            cmake --build SoapyMiri/build && cmake --install SoapyMiri/build
+            find "$MIRI" -name "*.so" -o -name "*.dylib" | sed 's/^/::notice::/'
+
+        - name: Configure
+          run: >
+            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+            -DUSE_BUNDLE_DEFAULTS=ON
+            -DOPT_BUILD_RTL_SDR_SOURCE=ON -DOPT_BUILD_RTL_TCP_SOURCE=ON -DOPT_BUILD_SOAPY_SOURCE=ON -DOPT_BUILD_FILE_SOURCE=ON
+            -DOPT_BUILD_AIRSPY_SOURCE=OFF -DOPT_BUILD_AIRSPYHF_SOURCE=OFF -DOPT_BUILD_AUDIO_SOURCE=OFF
+            -DOPT_BUILD_HACKRF_SOURCE=OFF -DOPT_BUILD_HERMES_SOURCE=OFF -DOPT_BUILD_NETWORK_SOURCE=OFF
+            -DOPT_BUILD_PLUTOSDR_SOURCE=OFF -DOPT_BUILD_RFSPACE_SOURCE=OFF -DOPT_BUILD_SDRPP_SERVER_SOURCE=OFF
+            -DOPT_BUILD_SPECTRAN_HTTP_SOURCE=OFF -DOPT_BUILD_SPYSERVER_SOURCE=OFF -DOPT_BUILD_HL2_SOURCE=OFF
+            -DOPT_BUILD_KIWISDR_SOURCE=OFF
+            -DOPT_BUILD_AUDIO_SINK=ON -DOPT_BUILD_NETWORK_SINK=OFF -DOPT_BUILD_MPEG_ADTS_SINK=OFF
+            -DOPT_BUILD_NEW_PORTAUDIO_SINK=OFF -DOPT_BUILD_PORTAUDIO_SINK=OFF
+            -DOPT_BUILD_CH_TETRA_DEMODULATOR=ON -DOPT_BUILD_RADIO=ON
+            -DOPT_BUILD_ATV_DECODER=OFF -DOPT_BUILD_CH_EXTRAVHF_DECODER=OFF -DOPT_BUILD_FT8_DECODER=OFF
+            -DOPT_BUILD_METEOR_DEMODULATOR=OFF -DOPT_BUILD_PAGER_DECODER=OFF -DOPT_BUILD_M17_DECODER=OFF
+            -DOPT_BUILD_FREQUENCY_MANAGER=ON -DOPT_BUILD_RECORDER=ON
+            -DOPT_BUILD_DISCORD_PRESENCE=OFF -DOPT_BUILD_IQ_EXPORTER=OFF -DOPT_BUILD_RIGCTL_CLIENT=OFF
+            -DOPT_BUILD_RIGCTL_SERVER=OFF -DOPT_BUILD_TCI_SERVER=OFF -DOPT_BUILD_SCANNER=OFF
+            -DOPT_BUILD_NOISE_REDUCTION_LOGMMSE=OFF
+
+        - name: Build
+          run: |
+            set -o pipefail
+            cmake --build build -j4 2>&1 | tee build.log
+
+        - name: Read plugin version
+          run: echo "TETRA_VERSION=$(sed -n 's/^#define TETRA_PLUGIN_VERSION "\([^"]*\)".*/\1/p' decoder_modules/ch_tetra_demodulator/src/measurements.h)" >> $GITHUB_ENV
+
+        - name: Package .app and .dmg
+          run: |
+            APP="SDR++ TETRA-SCHWARTZ.app"
+            bash make_macos_bundle.sh build sdrpp.app > bundle.log 2>&1 || { tail -40 bundle.log; exit 1; }
+            # MSi2500 driver as a SoapySDR module inside the bundle (path set in src/macos_init.m)
+            source macos/bundle_utils.sh
+            mkdir -p sdrpp.app/Contents/Plugins/SoapySDR
+            for m in miri-prefix/lib/SoapySDR/modules*/*.so; do
+              bundle_install_binary sdrpp.app sdrpp.app/Contents/Plugins/SoapySDR "$m" >> bundle.log 2>&1
+              install_name_tool -add_rpath @loader_path/../../Frameworks "sdrpp.app/Contents/Plugins/SoapySDR/$(basename "$m")"
+            done
+            # bundled libraries keep their Homebrew install id, point it to the bundle
+            for f in sdrpp.app/Contents/Frameworks/*.dylib; do
+              install_name_tool -id "@rpath/$(basename "$f")" "$f"
+            done
+            bundle_sign sdrpp.app
+            for m in rtl_sdr_source soapy_source ch_tetra_demodulator; do
+              test -f sdrpp.app/Contents/Plugins/$m.dylib || { echo "::error::$m missing"; exit 1; }
+            done
+            ls sdrpp.app/Contents/Plugins/SoapySDR/*.so > /dev/null || { echo "::error::MSi2500 Soapy module missing"; exit 1; }
+            # every library must come from the bundle, nothing from Homebrew
+            if find sdrpp.app -type f \( -name "*.dylib" -o -name "*.so" -o -name sdrpp \) -exec otool -L {} \; | grep -E "/opt/homebrew|/usr/local|miri-prefix"; then
+              echo "::error::bundle references libraries outside the .app"; exit 1
+            fi
+            mv sdrpp.app "$APP"
+            mkdir dmg && mv "$APP" dmg/ && ln -s /Applications dmg/Applications
+            hdiutil create -volname "SDR++ TETRA-SCHWARTZ" -srcfolder dmg -ov -format ULMO \
+              "SDRPP-TETRA-SCHWARTZ-v${TETRA_VERSION}-beta-macos-arm64.dmg"
+            ls -la *.dmg
+
+        - name: Save DMG
+          uses: actions/upload-artifact@v4
+          with:
+              name: SDRPP-TETRA-SCHWARTZ_v${{ env.TETRA_VERSION }}-beta_macos_arm64
+              path: SDRPP-TETRA-SCHWARTZ-v${{ env.TETRA_VERSION }}-beta-macos-arm64.dmg
+
 
     release:
         # every green build of main is published as a GitHub release (downloads
         # without a GitHub account and without the 90-day limit of artifacts)
         if: github.ref == 'refs/heads/main'
-        needs: [build_appimage, build_windows]
+        needs: [build_appimage, build_windows, build_macos_arm64]
         runs-on: ubuntu-24.04
         steps:
         - uses: actions/checkout@v4
@@ -456,10 +547,11 @@ jobs:
             mkdir -p rel
             cp dl/*windows_x64/sdrpp_windows_x64.zip "rel/SDRPP-TETRA-SCHWARTZ_${V}_windows_x64.zip"
             cp dl/*linux_appimage_x86_64/*.AppImage "rel/SDRPP-TETRA-SCHWARTZ_${V}_x86_64.AppImage"
+            cp dl/*macos_arm64/*.dmg "rel/SDRPP-TETRA-SCHWARTZ_${V}_macos_arm64.dmg"
             cp dl/*manuals_pdf/*.pdf rel/ 2>/dev/null || echo "::warning::no manuals in this run"
             (cd rel && sha256sum * > SHA256SUMS.txt)
             ls -la rel
-            NOTES="Experimental beta for amateur radio TETRA. Windows: unpack the zip and start sdrpp.exe. Linux: chmod +x the AppImage and start it. Manuals (German / English) as PDF. Changes: see the commit history. Check the downloads with SHA256SUMS.txt."
+            NOTES="Experimental beta for amateur radio TETRA. Windows: unpack the zip and start sdrpp.exe. Linux: chmod +x the AppImage and start it. macOS (Apple Silicon, macOS 14+, light build: RTL-SDR and MSi2500): drag the app to Applications, then run xattr -dr com.apple.quarantine \"/Applications/SDR++ TETRA-SCHWARTZ.app\" once (unsigned build). Manuals (German / English) as PDF. Changes: see the commit history. Check the downloads with SHA256SUMS.txt."
             # a rebuild of the same version replaces its release (tag on the newest commit)
             if gh release view "$V" > /dev/null 2>&1; then gh release delete "$V" --cleanup-tag -y; fi
             gh release create "$V" rel/* --target "$GITHUB_SHA" --title "SDR++ TETRA-SCHWARTZ $V" --notes "$NOTES" --latest

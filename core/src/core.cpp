@@ -922,6 +922,27 @@ int sdrpp_main(int argc, char* argv[]) {
         core::configManager.conf["max"] = -40.0;
         core::configManager.conf["hamTetraDefaults8"] = 1;
     }
+#ifdef __APPLE__
+    // macOS: MSi2500 dongles run through SoapySDR (driver bundled in the .app),
+    // so the SoapySDR source is created and visible
+    if (!core::configManager.conf.contains("hamTetraDefaultsMacSoapy")) {
+        auto& c = core::configManager.conf;
+        if (!c["moduleInstances"].contains("SoapySDR Source")) {
+            c["moduleInstances"]["SoapySDR Source"]["module"] = "soapy_source";
+            c["moduleInstances"]["SoapySDR Source"]["enabled"] = true;
+        }
+        auto& hs = c["hiddenSources"];
+        if (hs.is_array()) {
+            json keep = json::array();
+            for (auto& h : hs) {
+                if (h.is_string() && h.get<std::string>() == "SoapySDR") { continue; }
+                keep.push_back(h);
+            }
+            hs = keep;
+        }
+        c["hamTetraDefaultsMacSoapy"] = 1;
+    }
+#endif
     // Theme "Professional 2" was renamed to "RoSc" (v0.12.1)
     if (core::configManager.conf.contains("theme") && core::configManager.conf["theme"].is_string() &&
         core::configManager.conf["theme"] == "Professional 2") {

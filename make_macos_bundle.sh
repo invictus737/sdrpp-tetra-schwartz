@@ -48,6 +48,7 @@ bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rfspace_source/rfspace_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rtl_sdr_source/rtl_sdr_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/rtl_tcp_source/rtl_tcp_source.dylib
+bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/soapy_source/soapy_source.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules/sdrplay_source/sdrplay_source.dylib
 SDRPLAY_LIB_CANDIDATE=""
 if [ -n "$SDRPLAY_API_LIB" ] && [ -f "$SDRPLAY_API_LIB" ]; then
@@ -64,7 +65,7 @@ elif [ -d "$HOME/Library/SDRplayAPI" ]; then
         fi
     done
 fi
-if [ -n "$SDRPLAY_LIB_CANDIDATE" ]; then
+if [ -n "$SDRPLAY_LIB_CANDIDATE" ] && [ -f $BUILD_DIR/source_modules/sdrplay_source/sdrplay_source.dylib ]; then
     bundle_install_binary $BUNDLE $BUNDLE/Contents/Frameworks $SDRPLAY_LIB_CANDIDATE
 else
     echo "Warning: SDRplay API library not found; sdrplay_source may fail to load."
@@ -77,6 +78,7 @@ bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/source_modules
 
 # Sink modules
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/sink_modules/portaudio_sink/audio_sink.dylib
+bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/sink_modules/audio_sink/audio_sink.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/sink_modules/network_sink/network_sink.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/sink_modules/new_portaudio_sink/new_portaudio_sink.dylib
 bundle_install_binary $BUNDLE $BUNDLE/Contents/Plugins $BUILD_DIR/sink_modules/macos_coreaudio_sink/macos_coreaudio_sink.dylib

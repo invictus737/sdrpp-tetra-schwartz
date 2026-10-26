@@ -37,6 +37,17 @@ static void doMacosInit() {
     }
 }
 
+// SoapySDR modules bundled in the .app (e.g. MSi2500 driver), must be set before SoapySDR loads its modules
+static void setBundledSoapyPath() {
+    @autoreleasepool {
+        NSString* soapyDir = [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"Contents/Plugins/SoapySDR"];
+        if (getenv("SOAPY_SDR_PLUGIN_PATH") == NULL && [[NSFileManager defaultManager] fileExistsAtPath:soapyDir]) {
+            setenv("SOAPY_SDR_PLUGIN_PATH", [soapyDir fileSystemRepresentation], 1);
+        }
+    }
+}
+
 void macosInit() {
+    setBundledSoapyPath();
     doMacosInit();
 }
