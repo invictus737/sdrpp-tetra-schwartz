@@ -26,7 +26,7 @@ jobs:
         runs-on: ubuntu-24.04
 
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Install dependencies
           run: |
@@ -83,7 +83,7 @@ jobs:
             if ls AppDir/usr/lib/libsdrplay_api* > /dev/null 2>&1; then echo "::error::SDRplay API must not be bundled"; exit 1; fi
 
         - name: Save AppImage
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v6
           with:
               name: SDRPP-TETRA-SCHWARTZ_v${{ env.TETRA_VERSION }}-beta_linux_appimage_x86_64
               path: SDRPP-TETRA-SCHWARTZ-v${{ env.TETRA_VERSION }}-beta-x86_64.AppImage
@@ -149,7 +149,7 @@ jobs:
         - name: Save manuals
           if: always()
           continue-on-error: true
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v6
           with:
               name: SDRPP-TETRA-SCHWARTZ_v${{ env.TETRA_VERSION }}-beta_manuals_pdf
               path: manuals/*.pdf
@@ -160,7 +160,7 @@ jobs:
         runs-on: windows-2022
 
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Create Build Environment
           run: cmake -E make_directory ${{runner.workspace}}/build
@@ -302,7 +302,7 @@ jobs:
         - name: Setup Python 3.11 (UHD codegen)
           id: setup-python
           if: env.CACHE_UHD != 'restored'
-          uses: actions/setup-python@v5
+          uses: actions/setup-python@v6
           with:
             python-version: '3.11'
 
@@ -428,7 +428,7 @@ jobs:
           run: echo "TETRA_VERSION=$(sed -n 's/^#define TETRA_PLUGIN_VERSION "\([^"]*\)".*/\1/p' decoder_modules/ch_tetra_demodulator/src/measurements.h)" >> $GITHUB_ENV
 
         - name: Save Archive
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v6
           with:
               name: SDRPP-TETRA-SCHWARTZ_v${{ env.TETRA_VERSION }}-beta_windows_x64
               path: ${{runner.workspace}}/sdrpp_windows_x64.zip
@@ -442,7 +442,7 @@ jobs:
             HOMEBREW_NO_INSTALL_CLEANUP: 1
 
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Install dependencies
           run: brew install cmake ninja pkgconf fftw glfw volk zstd libusb librtlsdr rtaudio soapysdr
@@ -519,7 +519,7 @@ jobs:
             ls -la *.dmg
 
         - name: Save DMG
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v6
           with:
               name: SDRPP-TETRA-SCHWARTZ_v${{ env.TETRA_VERSION }}-beta_macos_arm64
               path: SDRPP-TETRA-SCHWARTZ-v${{ env.TETRA_VERSION }}-beta-macos-arm64.dmg
@@ -532,13 +532,13 @@ jobs:
         needs: [build_appimage, build_windows, build_macos_arm64]
         runs-on: ubuntu-24.04
         steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v5
 
         - name: Read plugin version
           run: echo "TETRA_VERSION=$(sed -n 's/^#define TETRA_PLUGIN_VERSION "\([^"]*\)".*/\1/p' decoder_modules/ch_tetra_demodulator/src/measurements.h)" >> $GITHUB_ENV
 
         - name: Collect builds and manuals
-          uses: actions/download-artifact@v4
+          uses: actions/download-artifact@v7
           with:
               path: dl
 
